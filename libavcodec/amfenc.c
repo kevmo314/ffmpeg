@@ -326,6 +326,11 @@ int ff_amf_encode_init(AVCodecContext *avctx)
         AMF_RETURN_IF_FALSE(ctx, ret == 0, ret, "Failed to create  hardware device context (AMF) : %s\n", av_err2str(ret));
     }
 
+    // A deep queue raises throughput at the cost of latency, which callers
+    // that ask for low delay don't want.
+    if (ctx->hwsurfaces_in_queue_max < 0)
+        ctx->hwsurfaces_in_queue_max = (avctx->flags & AV_CODEC_FLAG_LOW_DELAY) ? 1 : 16;
+
     if (ctx->pa_lookahead_buffer_depth >= ctx->hwsurfaces_in_queue_max) {
         av_log(avctx, AV_LOG_WARNING,
                "async_depth (%d) too small for lookahead (%d), increasing to (%d)\n",
