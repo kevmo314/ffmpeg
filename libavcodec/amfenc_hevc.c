@@ -484,6 +484,10 @@ static av_cold int amf_encode_init_hevc(AVCodecContext *avctx)
     res = ctx->encoder->pVtbl->GetProperty(ctx->encoder, AMF_VIDEO_ENCODER_HEVC_QUERY_TIMEOUT, &var);
     ctx->query_timeout_supported = res == AMF_OK && var.int64Value;
 
+    // Pre-analysis can hold frames for lookahead; see ff_amf_receive_packet().
+    res = ctx->encoder->pVtbl->GetProperty(ctx->encoder, AMF_VIDEO_ENCODER_HEVC_PRE_ANALYSIS_ENABLE, &var);
+    ctx->pa_enabled = res != AMF_OK || var.boolValue;
+
     // init encoder
     res = ctx->encoder->pVtbl->Init(ctx->encoder, ctx->format, avctx->width, avctx->height);
     AMF_RETURN_IF_FALSE(ctx, res == AMF_OK, AVERROR_BUG, "encoder->Init() failed with error %d\n", res);

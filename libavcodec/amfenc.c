@@ -37,6 +37,9 @@
 #include "encode.h"
 
 #define AMF_AV_FRAME_REF    L"av_frame_ref"
+// Upper bound on waiting for a low-delay frame's output, as a safeguard
+// against a driver that unexpectedly holds the frame back.
+#define AMF_MAX_OUTPUT_WAIT_MS 100
 #define PTS_PROP            L"PtsProp"
 
 #if CONFIG_D3D11VA
@@ -592,6 +595,8 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
     AMFBuffer* buffer = NULL;
     AVFrame    *frame = av_frame_alloc();
     int         block_and_wait;
+    int         wait_for_output = 0;
+    int         wait_iterations = 0;
     int64_t     pts = 0;
     int output_delay = FFMAX(ctx->max_b_frames, 0) + ((avctx->flags & AV_CODEC_FLAG_LOW_DELAY) ? 0 : 1);
 
@@ -639,6 +644,10 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
                 return ret;
             }
             pts = frame->pts;
+            // With nothing reordering or looking ahead, the output for this
+            // frame can be returned from this call instead of a later one,
+            // which would otherwise cost the caller a frame of latency.
+            wait_for_output = !surface && output_delay == 0 && !ctx->pa_enabled;
         }
     }
     av_frame_free(&frame);
@@ -663,7 +672,8 @@ int ff_amf_receive_packet(AVCodecContext *avctx, AVPacket *avpkt)
                     av_log(avctx, AV_LOG_WARNING, "Data acquired but delayed drain submission got AMF_INPUT_FULL- should not happen\n");
                 }
             }
-        } else if (ctx->delayed_drain || (ctx->eof && res_query != AMF_EOF) || (ctx->hwsurfaces_in_queue >= ctx->hwsurfaces_in_queue_max) || surface) {
+        } else if (ctx->delayed_drain || (ctx->eof && res_query != AMF_EOF) || (ctx->hwsurfaces_in_queue >= ctx->hwsurfaces_in_queue_max) || surface ||
+                   (wait_for_output && ++wait_iterations <= AMF_MAX_OUTPUT_WAIT_MS)) {
             block_and_wait = 1;
             // Only sleep if the driver doesn't support waiting in QueryOutput()
             // or if we already have output data so we will skip calling it.

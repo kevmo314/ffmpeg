@@ -52,6 +52,7 @@ typedef struct AMFEncoderContext {
     int                 hwsurfaces_in_queue;
     int                 hwsurfaces_in_queue_max;
     int                 query_timeout_supported;
+    int                 pa_enabled; // pre-analysis may hold frames for lookahead
 
     // helpers to handle async calls
     int                 delayed_drain;
